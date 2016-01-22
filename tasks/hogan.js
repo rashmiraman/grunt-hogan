@@ -137,8 +137,8 @@ module.exports = function(grunt) {
       return err('options include an invalid "nameFunc"');
     }
 
-    for(var i=0; i < languagesConfig.length; i++) {
-      var language = languagesConfig[i].language;
+    for(var i=0; i < options.languagesConfig.length; i++) {
+      var language = options.languagesConfig[i].language;
           gt = new Gettext(),
           gettext = function(str) { return gt.gettext(str) },
           fileContents = fs.readFileSync(options.poFileFolder + language + ".po");
@@ -158,7 +158,7 @@ module.exports = function(grunt) {
                 }
 
                 try {
-                  name = languagesConfig[i].nameFunc(filepath);
+                  name = options.languagesConfig[i].nameFunc(filepath);
                   grunt.verbose.writeln(filepath + ' -> ' + name);
                 }
                 catch (error) {
