@@ -1,19 +1,15 @@
 {
-  "name": "grunt-hogan",
-  "description": "a grunt task to compile/precompile hogan templates",
-  "version": "0.3.0",
-  "homepage": "https://github.com/automatonic/grunt-hogan",
+  "name": "bb.grunt-hogan",
+  "description": "Monkey patched a grunt task to compile/precompile hogan templates",
+  "version": "0.3.1",
+  "homepage": "https://bbgithub.dev.bloomberg.com/rraman29/bb.grunt-hogan/",
   "author": {
     "name": "Elliott B. Edwards",
     "email": "elliott@automatonic.net",
     "url": "http://automatonic.net"
   },
   "repository": {
-    "type": "git",
-    "url": "git://github.com/automatonic/grunt-hogan.git"
-  },
-  "bugs": {
-    "url": "https://github.com/automatonic/grunt-hogan/issues"
+    "url": "git+https://bbgithub.dev.bloomberg.com/rraman29/bb.grunt-hogan/"
   },
   "licenses": [
     {
@@ -49,6 +45,7 @@
     "hogan.js",
     "template",
     "mustache",
-    "templating"
+    "templating",
+    "i18n"
   ]
 }
