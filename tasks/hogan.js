@@ -10,7 +10,8 @@ var _ = require('lodash'),
   nodepath = require('path'),
   hogan = require('hogan.js'),
   hoganI18n = require('hogan-i18n'),
-  Gettext = require("node-gettext");
+  Gettext = require("node-gettext"),
+  fs = require("fs");
 
 
 var defaultNameFunc = function(fileName) {
@@ -137,84 +138,97 @@ module.exports = function(grunt) {
       return err('options include an invalid "nameFunc"');
     }
 
+    this.languagesConfigWithGettext = options.languagesConfig.slice(0);
+
     for(var i=0; i < options.languagesConfig.length; i++) {
-      var language = options.languagesConfig[i].language;
+      var language = options.languagesConfig[i].language,
           gt = new Gettext(),
           gettext = function(str) { return gt.gettext(str) },
           fileContents = fs.readFileSync(options.poFileFolder + language + ".po");
+
           gt.addTextdomain(language, fileContents);
 
-      files
-        .forEach(function(file) {
-          var templates = file
-            .src
-            .map(
-              function(filepath) {
-                var name;
-
-                if (!grunt.file.exists(filepath)) {
-                  grunt.log.errorlns('Template "' + filepath + '" not found.');
-                  return null;
-                }
-
-                try {
-                  name = options.languagesConfig[i].nameFunc(filepath);
-                  grunt.verbose.writeln(filepath + ' -> ' + name);
-                }
-                catch (error) {
-                  grunt.log.warn('Could not select template name from path.');
-                  name = defaultNameFunc(filepath);
-                }
-
-                try {
-                  return {
-                    name: name,
-                    comma: ',',
-                    template: options.poFolder ? hoganI18n.compile(grunt.file.read(filepath), {asString : 1}, gettext) : hogan.compile(grunt.file.read(filepath), {asString: 1})
-                  };
-                }
-                catch (error) {
-                  grunt.log.error(error);
-                  grunt.log.error('Could not compile template ' + filepath);
-                  return null;
-                }
-              }
-            );
-
-            //No comma on the last template
-            if (options.suppressLastTemplateComma && _.any(templates)) {
-              templates[templates.length-1].comma = '';
-            }
-
-            var context = { //build a context for the binder template to work against
-              config: function() { //lambda that retrieves config parameters
-                return function(text) {
-                  return grunt.config(text);
-                };
-              },
-              exposeTemplates : options.exposeTemplates,
-              output: file.dest,
-              exportName: options.exportName,
-              outputFileName: defaultNameFunc(file.dest),
-              binderName: options.binderName,
-              templates: templates
-            };
-
-            try
-            {
-              grunt.file.write(
-                file.dest,
-                options.binderTemplate.render(
-                  context));
-              grunt.log.ok(file.dest);
-            }
-            catch(error) {
-              grunt.log.error(error);
-              grunt.log.error('Failed to write out compiled template:');
-              grunt.log.error(file.dest);
-            }
-        });
+          this.languagesConfigWithGettext[i].gt = gt;
+          this.languagesConfigWithGettext[i].gettext = gettext;
     }
+
+    var self = this;
+
+    files.forEach(function(file) {
+      var templates = _.flatten(file.src.map(function(filepath) {
+        var name;
+        var t = [];
+
+        if (!grunt.file.exists(filepath)) {
+          grunt.log.errorlns('Template "' + filepath + '" not found.');
+          return null;
+        }
+        for(var i=0; i < self.languagesConfigWithGettext.length; i++) {
+          try {
+            name = self.languagesConfigWithGettext[i].nameFunc(filepath);
+            grunt.verbose.writeln(filepath + ' -> ' + name);
+          }
+          catch (error) {
+            grunt.log.warn('Could not select template name from path.');
+            name = defaultNameFunc(filepath);
+          }
+
+          try {
+            if (name === 'node_modules/bb.loader/dist/bb.loader_en') {
+                return {
+                    name: 'node_modules/bb.loader/dist/bb.loader',
+                    comma: ',',
+                    template: hoganI18n.compile(grunt.file.read(filepath), {asString : 1}, self.languagesConfigWithGettext[i].gettext)
+                };
+            }
+            t.push({
+              name: name,
+              comma: ',',
+              template: hoganI18n.compile(grunt.file.read(filepath), {asString : 1}, self.languagesConfigWithGettext[i].gettext)
+            });
+          }
+          catch (error) {
+            grunt.log.error(error);
+            grunt.log.error('Could not compile template ' + filepath);
+            return null;
+          }
+        }
+        return t;
+      }));
+
+      //No comma on the last template
+      if (options.suppressLastTemplateComma && _.any(templates)) {
+        templates[templates.length-1].comma = '';
+      }
+
+      var context = { //build a context for the binder template to work against
+        config: function() { //lambda that retrieves config parameters
+          return function(text) {
+            return grunt.config(text);
+          };
+        },
+        exposeTemplates : options.exposeTemplates,
+        output: file.dest,
+        exportName: options.exportName,
+        outputFileName: defaultNameFunc(file.dest),
+        binderName: options.binderName,
+        templates: templates
+      };
+
+      try
+      {
+        grunt.file.write(
+          file.dest,
+          options.binderTemplate.render(
+            context));
+        grunt.log.ok(file.dest);
+      }
+      catch(error) {
+        grunt.log.error(error);
+        grunt.log.error('Failed to write out compiled template:');
+        grunt.log.error(file.dest);
+      }
+    });
     if (this.errorCount) {
       return false;
     }
