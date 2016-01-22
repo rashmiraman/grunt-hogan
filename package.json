@@ -32,7 +32,9 @@
   "dependencies": {
     "hogan.js": "^3.0.2",
     "lodash": "^2.4.1",
-    "underscore": "~1.4.4"
+    "underscore": "~1.4.4",
+    "hogan-i18n": "0.1.0",
+    "node-gettext": "~0.2.14"
   },
   "devDependencies": {
     "grunt": "~0.4.5",

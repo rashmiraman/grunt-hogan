@@ -8,27 +8,32 @@
 
 var _ = require('lodash'),
   nodepath = require('path'),
-  hogan = require('hogan.js');
+  hogan = require('hogan.js'),
+  hoganI18n = require('hogan-i18n'),
+  Gettext = require("node-gettext");
+
 
 var defaultNameFunc = function(fileName) {
     return nodepath.basename(fileName, nodepath.extname(fileName));
-}; 
+};
 
 module.exports = function(grunt) {
 
   //Register with grunt and massage options
   grunt.registerMultiTask('hogan', 'Compile a hogan template.', function() {
     var data = this.data,
-      files = this.files,
-      
+      files = this.files;
+
       defaults = {
         binderName: 'default',
         binderPath: __dirname +'/binders.js',
         exportName: this.target,
         nameFunc: defaultNameFunc,
-        suppressLastTemplateComma: true
+        suppressLastTemplateComma: true,
+        languagesConfig: [{language: "en", nameFunc: function(file) {return file;}}],
+        poFileFolder: null
       },
-      options = this.options(defaults); 
+      options = this.options(defaults);
     //Support deprecated options for now
     {
       var migrate = function(key) {
@@ -41,21 +46,21 @@ module.exports = function(grunt) {
           options[key] = data[key]; //migrate the option
         }
       };
-      
+
       migrate('binderName');
       migrate('exportName');
       migrate('nameFunc');
       migrate('exposeTemplates');
-      
+
       if (_.has(data, 'binder')) {
         grunt.log.warn('DEPRECATED: "binder" should be "binderPath" for clarity');
         options.binderPath = data.binder;
       }
-      
+
       if (_.has(data, 'batchRender')) {
         grunt.log.warn('DEPRECATED: "batchRender" is no longer supported');
       }
-      
+
       var pushFiles = function(srcFiles) {
         if (_.has(data, 'output')) {
           grunt.log.warn('DEPRECATED: "output" should be "dest".');
@@ -70,7 +75,7 @@ module.exports = function(grunt) {
           throw new Error('No "dest" or "output" (deprecated) found.');
         }
       };
-      
+
       if (_.has(data, 'template')) {
         grunt.log.warn('DEPRECATED: "template" should be set as "src". See: http://gruntjs.com/configuring-tasks#files');
         pushFiles([data.template]);
@@ -80,20 +85,20 @@ module.exports = function(grunt) {
         pushFiles(data.templates);
       }
     }
-    
+
     var err = function(message) {
       grunt.log.errorlns(message);
       return false;
     };
-    
+
     //Begin task
     grunt.log.writeln('Compiling template...');
-    
+
     //Make sure it is an accessible file
     if (!grunt.file.isFile(options.binderPath)) {
       return err('Binder template is not accessible');
     }
-  
+
     //Require the module...path should follow node.js require() rules
     grunt.verbose.writeln('Requiring binder template...');
     try {
@@ -123,91 +128,97 @@ module.exports = function(grunt) {
       grunt.log.errorlns(error);
       return err('Could not require binder template');
     }
-    
+
     if (!_.isFunction(options.binderTemplate.render)) {
       return err('Binder template should have had a "render" func');
     }
-    
+
     if (!_.isFunction(options.nameFunc)) {
       return err('options include an invalid "nameFunc"');
     }
 
-    files
-      .forEach(function(file) {
-        var templates = file
-          .src
-          .map(
-            function(filepath) {
-              var name;
-              
-              if (!grunt.file.exists(filepath)) {
-                grunt.log.errorlns('Template "' + filepath + '" not found.');
-                return null;
+    for(var i=0; i < languagesConfig.length; i++) {
+      var language = languagesConfig[i].language;
+          gt = new Gettext(),
+          gettext = function(str) { return gt.gettext(str) },
+          fileContents = fs.readFileSync(options.poFileFolder + language + ".po");
+          gt.addTextdomain(language, fileContents);
+
+      files
+        .forEach(function(file) {
+          var templates = file
+            .src
+            .map(
+              function(filepath) {
+                var name;
+
+                if (!grunt.file.exists(filepath)) {
+                  grunt.log.errorlns('Template "' + filepath + '" not found.');
+                  return null;
+                }
+
+                try {
+                  name = languagesConfig[i].nameFunc(filepath);
+                  grunt.verbose.writeln(filepath + ' -> ' + name);
+                }
+                catch (error) {
+                  grunt.log.warn('Could not select template name from path.');
+                  name = defaultNameFunc(filepath);
+                }
+
+                try {
+                  return {
+                    name: name,
+                    comma: ',',
+                    template: options.poFolder ? hoganI18n.compile(grunt.file.read(filepath), {asString : 1}, gettext) : hogan.compile(grunt.file.read(filepath), {asString: 1})
+                  };
+                }
+                catch (error) {
+                  grunt.log.error(error);
+                  grunt.log.error('Could not compile template ' + filepath);
+                  return null;
+                }
               }
-              
-              try {
-                name = options.nameFunc(filepath);
-                grunt.verbose.writeln(filepath + ' -> ' + name);
-              }
-              catch (error) {
-                grunt.log.warn('Could not select template name from path.');
-                name = defaultNameFunc(filepath);
-              }
-              
-              try {
-                return {
-                  name: name,
-                  comma: ',',
-                  template: hogan.compile(grunt.file.read(filepath), 
-                  { asString: 1 })
-                }; 
-              }
-              catch (error) {
-                grunt.log.error(error);
-                grunt.log.error('Could not compile template ' + filepath);
-                return null;
-              }
+            );
+
+            //No comma on the last template
+            if (options.suppressLastTemplateComma && _.any(templates)) {
+              templates[templates.length-1].comma = '';
             }
-          );
-          
-          //No comma on the last template
-          if (options.suppressLastTemplateComma && _.any(templates)) {
-            templates[templates.length-1].comma = '';
-          }
-          
-          var context = { //build a context for the binder template to work against
-            config: function() { //lambda that retrieves config parameters
-              return function(text) {
-                return grunt.config(text);
-              };
-            },
-            exposeTemplates : options.exposeTemplates,
-            output: file.dest,
-            exportName: options.exportName,
-            outputFileName: defaultNameFunc(file.dest),
-            binderName: options.binderName,
-            templates: templates
-          };
-        
-          try
-          {
-            grunt.file.write(
-              file.dest, 
-              options.binderTemplate.render(
-                context));
-            grunt.log.ok(file.dest);
-          }
-          catch(error) {
-            grunt.log.error(error);
-            grunt.log.error('Failed to write out compiled template:');
-            grunt.log.error(file.dest);
-          }
-      });
-      
+
+            var context = { //build a context for the binder template to work against
+              config: function() { //lambda that retrieves config parameters
+                return function(text) {
+                  return grunt.config(text);
+                };
+              },
+              exposeTemplates : options.exposeTemplates,
+              output: file.dest,
+              exportName: options.exportName,
+              outputFileName: defaultNameFunc(file.dest),
+              binderName: options.binderName,
+              templates: templates
+            };
+
+            try
+            {
+              grunt.file.write(
+                file.dest,
+                options.binderTemplate.render(
+                  context));
+              grunt.log.ok(file.dest);
+            }
+            catch(error) {
+              grunt.log.error(error);
+              grunt.log.error('Failed to write out compiled template:');
+              grunt.log.error(file.dest);
+            }
+        });
+    }
     if (this.errorCount) {
       return false;
     }
-    
+
     return true;
   });
 };
