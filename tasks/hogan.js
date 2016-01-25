@@ -140,17 +140,19 @@ module.exports = function(grunt) {
 
     this.languagesConfigWithGettext = options.languagesConfig.slice(0);
 
+    var language, gt;
     for(var i=0; i < options.languagesConfig.length; i++) {
-      var language = options.languagesConfig[i].language,
+          language = options.languagesConfig[i].language,
           gt = new Gettext(),
-          gettext = function(str) { return gt.gettext(str) },
           fileContents = fs.readFileSync(options.poFileFolder + language + ".po");
 
           gt.addTextdomain(language, fileContents);
 
           this.languagesConfigWithGettext[i].gt = gt;
-          this.languagesConfigWithGettext[i].gettext = gettext;
+          this.languagesConfigWithGettext[i].gettext = gt.gettext.bind(gt);
     }
+
+    grunt.verbose.writeln("hello " + JSON.stringify(this.languagesConfigWithGettext));
 
     var self = this;
 
